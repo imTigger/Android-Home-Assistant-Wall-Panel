@@ -10,7 +10,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -59,7 +59,9 @@ import com.tigerworkshop.homepanel.PanelViewModel
 import com.tigerworkshop.homepanel.data.Config
 import com.tigerworkshop.homepanel.data.ConnectionStatus
 import com.tigerworkshop.homepanel.data.EntityState
+import com.tigerworkshop.homepanel.data.ForecastEntry
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -70,22 +72,51 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
     val config by vm.config.collectAsStateLifecycleSafe()
     val pending by vm.pendingBrightness.collectAsStateLifecycleSafe()
 
+    val forecast by vm.forecast.collectAsStateLifecycleSafe()
+
     var sheetId by remember { mutableStateOf<String?>(null) }
 
     // Back closes the brightness sheet if open; otherwise swallow it to keep the panel in front.
     BackHandler { if (sheetId != null) sheetId = null }
 
+    val weather = config.weatherEntity.takeIf { it.isNotBlank() }?.let { states[it] }
+    val condition = weather?.state.orEmpty()
+    val isNight = condition == "clear-night" || java.time.LocalTime.now().hour.let { it < 6 || it >= 20 }
+    val bgColors = if (config.weatherDynamicBg && weather != null) {
+        weatherGradient(condition, isNight)
+    } else {
+        listOf(PanelBg, Color(0xFF0E1726))
+    }
+
     Box(Modifier.fillMaxSize()) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors))) {
             Box(Modifier.fillMaxSize().padding(20.dp)) {
                 Column(Modifier.fillMaxSize()) {
-                    HeaderBar(config, states, status, onOpenSettings)
+                    HeaderBar(config, states, weather)
+                    if (weather != null && config.weatherShowForecast && forecast.isNotEmpty()) {
+                        Spacer(Modifier.height(16.dp))
+                        ForecastStrip(forecast)
+                    }
                     Spacer(Modifier.height(18.dp))
                     if (!config.isConfigured) {
                         NotConfigured(onOpenSettings)
                     } else {
                         LightsGrid(config, states, pending, vm, onLongPress = { sheetId = it })
                     }
+                }
+            }
+            // Status + settings, floating bottom-right.
+            Surface(
+                color = PanelSurface.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp, end = 4.dp),
+                ) {
+                    StatusDot(status)
+                    GearButton(onOpenSettings)
                 }
             }
         }
@@ -112,36 +143,67 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
 private fun HeaderBar(
     config: Config,
     states: Map<String, EntityState>,
-    status: ConnectionStatus,
-    onOpenSettings: () -> Unit,
+    weather: EntityState?,
 ) {
     val temp = states[config.tempEntity]
     val humidity = states[config.humidityEntity]
 
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        // On a tall/narrow (portrait) screen the clock and chips don't fit side by
-        // side, so stack them; in landscape lay them out in one row.
-        val wide = maxWidth >= 720.dp
-        if (wide) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                ClockBlock(Modifier.weight(1f))
-                ClimateChips(temp, humidity)
-                Spacer(Modifier.width(12.dp))
-                StatusDot(status)
-                GearButton(onOpenSettings)
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            ClockBlock(Modifier.weight(1f))
+            if (weather != null) {
+                WeatherNow(weather)
             }
-        } else {
-            Column(Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
-                    ClockBlock(Modifier.weight(1f))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatusDot(status)
-                        GearButton(onOpenSettings)
+        }
+        if (temp != null || humidity != null) {
+            Spacer(Modifier.height(14.dp))
+            Row { ClimateChips(temp, humidity) }
+        }
+    }
+}
+
+@Composable
+private fun WeatherNow(weather: EntityState) {
+    val condition = weather.state
+    val temp = weather.attributes.optDouble("temperature").takeIf { !it.isNaN() }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 10.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.End) {
+            if (temp != null) {
+                Text("${temp.roundToInt()}°", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            Text(prettyCondition(condition), fontSize = 14.sp, color = TextSecondary)
+        }
+        Spacer(Modifier.width(10.dp))
+        Icon(weatherIcon(condition), null, tint = weatherIconTint(condition), modifier = Modifier.size(48.dp))
+    }
+}
+
+@Composable
+private fun ForecastStrip(forecast: List<ForecastEntry>) {
+    Surface(color = PanelSurface.copy(alpha = 0.45f), shape = RoundedCornerShape(20.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            forecast.take(5).forEach { f ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(forecastDayLabel(f.datetime), fontSize = 13.sp, color = TextSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    Icon(weatherIcon(f.condition), null, tint = weatherIconTint(f.condition), modifier = Modifier.size(30.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        f.tempHigh?.let { "${it.roundToInt()}°" } ?: "–",
+                        fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
+                    )
+                    f.tempLow?.let {
+                        Text("${it.roundToInt()}°", fontSize = 13.sp, color = TextSecondary)
                     }
-                }
-                if (temp != null || humidity != null) {
-                    Spacer(Modifier.height(14.dp))
-                    Row { ClimateChips(temp, humidity) }
                 }
             }
         }
@@ -186,7 +248,7 @@ private fun ClockBlock(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ClimateChip(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, tint: Color) {
-    Surface(color = PanelSurface, shape = RoundedCornerShape(18.dp)) {
+    Surface(color = PanelSurface.copy(alpha = 0.5f), shape = RoundedCornerShape(18.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
@@ -273,7 +335,7 @@ private fun LightTile(
     val dimmable = entity != null && entity.supportsBrightness
 
     val bg by animateColorAsState(
-        if (on) PanelSurfaceOn else PanelSurface, label = "tilebg",
+        if (on) PanelSurfaceOn.copy(alpha = 0.85f) else PanelSurface.copy(alpha = 0.55f), label = "tilebg",
     )
     val iconTint by animateColorAsState(if (on) Accent else TextSecondary, label = "icon")
 
@@ -293,14 +355,14 @@ private fun LightTile(
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(140.dp)
             .combinedClickable(
                 enabled = !unavailable,
                 onClick = { onToggle(!on) },
                 onLongClick = if (dimmable) onLongPress else null,
             ),
     ) {
-        Row(Modifier.fillMaxSize().padding(20.dp)) {
+        Row(Modifier.fillMaxSize().padding(16.dp)) {
             // Left: icon + name + state (fixed positions, no shift on toggle)
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Icon(

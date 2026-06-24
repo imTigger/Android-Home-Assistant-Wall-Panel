@@ -38,6 +38,9 @@ class Settings(context: Context) {
         nightEndMinutes = prefs.getInt(K_NIGHT_END, 7 * 60),
         columnsLandscape = prefs.getInt(K_COLS_LAND, 3),
         columnsPortrait = prefs.getInt(K_COLS_PORT, 2),
+        weatherEntity = prefs.getString(K_WEATHER, "") ?: "",
+        weatherDynamicBg = prefs.getBoolean(K_WEATHER_BG, true),
+        weatherShowForecast = prefs.getBoolean(K_WEATHER_FORECAST, true),
     )
 
     private fun readLights(): List<LightEntry> {
@@ -77,6 +80,9 @@ class Settings(context: Context) {
             putInt(K_NIGHT_END, c.nightEndMinutes)
             putInt(K_COLS_LAND, c.columnsLandscape)
             putInt(K_COLS_PORT, c.columnsPortrait)
+            putString(K_WEATHER, c.weatherEntity.trim())
+            putBoolean(K_WEATHER_BG, c.weatherDynamicBg)
+            putBoolean(K_WEATHER_FORECAST, c.weatherShowForecast)
         }.apply()
     }
 
@@ -92,6 +98,9 @@ class Settings(context: Context) {
         private const val K_NIGHT_END = "night_end"
         private const val K_COLS_LAND = "cols_landscape"
         private const val K_COLS_PORT = "cols_portrait"
+        private const val K_WEATHER = "weather_entity"
+        private const val K_WEATHER_BG = "weather_dynamic_bg"
+        private const val K_WEATHER_FORECAST = "weather_show_forecast"
     }
 }
 
@@ -106,6 +115,9 @@ data class Config(
     val nightEndMinutes: Int,
     val columnsLandscape: Int = 3,
     val columnsPortrait: Int = 2,
+    val weatherEntity: String = "",
+    val weatherDynamicBg: Boolean = true,
+    val weatherShowForecast: Boolean = true,
 ) {
     val isConfigured: Boolean get() = baseUrl.isNotBlank() && token.isNotBlank()
     val configuredLights: List<LightEntry> get() = lights.filter { it.entityId.isNotBlank() }

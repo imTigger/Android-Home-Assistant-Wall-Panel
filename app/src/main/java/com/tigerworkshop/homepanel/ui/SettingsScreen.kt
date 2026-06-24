@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -85,10 +87,15 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
     var nightEnd by remember { mutableStateOf(cfg.nightEndMinutes) }
     var colsLandscape by remember { mutableStateOf(cfg.columnsLandscape) }
     var colsPortrait by remember { mutableStateOf(cfg.columnsPortrait) }
+    var weatherEntity by remember { mutableStateOf(cfg.weatherEntity) }
+    var weatherBg by remember { mutableStateOf(cfg.weatherDynamicBg) }
+    var weatherForecast by remember { mutableStateOf(cfg.weatherShowForecast) }
     var showScanner by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<Int?>(null) }
 
     var lightOptions by remember { mutableStateOf<List<EntityState>>(emptyList()) }
     var sensorOptions by remember { mutableStateOf<List<EntityState>>(emptyList()) }
+    var weatherOptions by remember { mutableStateOf<List<EntityState>>(emptyList()) }
     var loadMsg by remember { mutableStateOf<String?>(null) }
 
     fun persist() {
@@ -99,6 +106,8 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 tempEntity = tempEntity, humidityEntity = humidityEntity,
                 nightEnabled = nightEnabled, nightStartMinutes = nightStart, nightEndMinutes = nightEnd,
                 columnsLandscape = colsLandscape, columnsPortrait = colsPortrait,
+                weatherEntity = weatherEntity, weatherDynamicBg = weatherBg,
+                weatherShowForecast = weatherForecast,
             )
         }
     }
@@ -137,6 +146,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                                 val onOffDomains = setOf("light", "switch", "fan", "input_boolean")
                                 lightOptions = list.filter { it.domain in onOffDomains }.sortedBy { it.friendlyName }
                                 sensorOptions = list.filter { it.domain == "sensor" }.sortedBy { it.friendlyName }
+                                weatherOptions = list.filter { it.domain == "weather" }.sortedBy { it.friendlyName }
                                 loadMsg = "Loaded ${lightOptions.size} controllable, ${sensorOptions.size} sensors"
                             }.onFailure { loadMsg = "Failed: ${it.message}" }
                         }
@@ -168,7 +178,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                     onMoveDown = {
                         if (i < lights.size - 1) lights = lights.toMutableList().also { it.add(i + 1, it.removeAt(i)) }
                     },
-                    onRemove = { lights = lights.toMutableList().also { it.removeAt(i) } },
+                    onRemove = { pendingDelete = i },
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -186,6 +196,29 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             EntityAutoComplete("Temperature sensor", tempEntity, sensorOptions) { tempEntity = it }
             Spacer(Modifier.height(10.dp))
             EntityAutoComplete("Humidity sensor", humidityEntity, sensorOptions) { humidityEntity = it }
+
+            Spacer(Modifier.height(22.dp))
+            SectionTitle("Weather")
+            EntityAutoComplete("Weather entity (e.g. Met.no)", weatherEntity, weatherOptions) { weatherEntity = it }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Dynamic weather background", color = TextPrimary, fontSize = 16.sp)
+                    Text(
+                        "Tint the panel background to match conditions",
+                        color = TextSecondary, fontSize = 13.sp,
+                    )
+                }
+                Switch(checked = weatherBg, onCheckedChange = { weatherBg = it })
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Show forecast", color = TextPrimary, fontSize = 16.sp)
+                    Text("Display the multi-day forecast strip", color = TextSecondary, fontSize = 13.sp)
+                }
+                Switch(checked = weatherForecast, onCheckedChange = { weatherForecast = it })
+            }
 
             Spacer(Modifier.height(22.dp))
             SectionTitle("Layout")
@@ -223,6 +256,33 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                     showScanner = false
                 },
                 onClose = { showScanner = false },
+            )
+        }
+
+        pendingDelete?.let { idx ->
+            val entry = lights.getOrNull(idx)
+            val label = entry?.name?.ifBlank { null }
+                ?: lightOptions.firstOrNull { it.entityId == entry?.entityId }?.friendlyName
+                ?: entry?.entityId?.ifBlank { null }
+                ?: "this light"
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Remove light?") },
+                text = { Text("Remove “$label” from the panel?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (idx < lights.size) {
+                            lights = lights.toMutableList().also { it.removeAt(idx) }
+                        }
+                        pendingDelete = null
+                    }) { Text("Remove", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) { Text("Cancel", color = TextSecondary) }
+                },
+                containerColor = PanelSurfaceHi,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary,
             )
         }
     }

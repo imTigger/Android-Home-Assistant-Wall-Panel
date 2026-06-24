@@ -4,10 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tigerworkshop.homepanel.data.Config
+import com.tigerworkshop.homepanel.data.ConnectionStatus
 import com.tigerworkshop.homepanel.data.EntityState
 import com.tigerworkshop.homepanel.data.Settings
 import com.tigerworkshop.homepanel.ha.HomeAssistantClient
 import com.tigerworkshop.homepanel.night.NightController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -22,6 +24,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     val config: StateFlow<Config> = settings.flow
     val states = ha.states
     val status = ha.status
+    val forecast = ha.forecast
 
     /** Local optimistic brightness overrides so the slider feels instant. */
     private val _pendingBrightness = MutableStateFlow<Map<String, Int>>(emptyMap())
@@ -41,6 +44,23 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
                 .map { Triple(it.nightEnabled, it.nightStartMinutes, it.nightEndMinutes) }
                 .distinctUntilChanged()
                 .collect { NightController.schedule(getApplication(), settings.value) }
+        }
+        // Fetch the weather forecast whenever we (re)connect with a weather entity set.
+        viewModelScope.launch {
+            ha.status.collect { st ->
+                if (st == ConnectionStatus.CONNECTED) {
+                    settings.value.weatherEntity.takeIf { it.isNotBlank() }?.let { ha.requestForecast(it) }
+                }
+            }
+        }
+        // Refresh the forecast periodically.
+        viewModelScope.launch {
+            while (true) {
+                delay(30 * 60 * 1000L)
+                if (status.value == ConnectionStatus.CONNECTED) {
+                    settings.value.weatherEntity.takeIf { it.isNotBlank() }?.let { ha.requestForecast(it) }
+                }
+            }
         }
     }
 

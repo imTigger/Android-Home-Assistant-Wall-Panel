@@ -52,3 +52,11 @@ data class EntityState(
 }
 
 enum class ConnectionStatus { DISCONNECTED, CONNECTING, CONNECTED, AUTH_FAILED, ERROR }
+
+/** One day (or period) of a Home Assistant weather forecast. */
+data class ForecastEntry(
+    val datetime: String,
+    val condition: String,
+    val tempHigh: Double?,
+    val tempLow: Double?,
+)

@@ -4,6 +4,7 @@ import android.util.Log
 import com.tigerworkshop.homepanel.data.Config
 import com.tigerworkshop.homepanel.data.ConnectionStatus
 import com.tigerworkshop.homepanel.data.EntityState
+import com.tigerworkshop.homepanel.data.ForecastEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +41,12 @@ class HomeAssistantClient {
 
     private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val status: StateFlow<ConnectionStatus> = _status
+
+    private val _forecast = MutableStateFlow<List<ForecastEntry>>(emptyList())
+    val forecast: StateFlow<List<ForecastEntry>> = _forecast
+
+    /** Callbacks awaiting a "result" message, keyed by request id (e.g. get_forecasts). */
+    private val pendingResults = java.util.concurrent.ConcurrentHashMap<Int, (JSONObject) -> Unit>()
 
     private val msgId = AtomicInteger(1)
     private var webSocket: WebSocket? = null
@@ -108,9 +115,11 @@ class HomeAssistantClient {
                         ws.close(1000, "auth failed")
                     }
                     "result" -> {
-                        if (msg.optInt("id") == getStatesId && msg.optBoolean("success")) {
+                        val rid = msg.optInt("id")
+                        if (rid == getStatesId && msg.optBoolean("success")) {
                             ingestStates(msg.optJSONArray("result"))
                         }
+                        pendingResults.remove(rid)?.invoke(msg)
                     }
                     "event" -> handleEvent(msg.optJSONObject("event"))
                 }
@@ -180,6 +189,50 @@ class HomeAssistantClient {
     /** brightnessPct: 1..100 */
     fun setLightBrightness(entityId: String, brightnessPct: Int) {
         callService("light", "turn_on", entityId, JSONObject().put("brightness_pct", brightnessPct.coerceIn(1, 100)))
+    }
+
+    /** Fetch a daily forecast for a weather entity via weather.get_forecasts (with response). */
+    fun requestForecast(entityId: String, type: String = "daily") {
+        val ws = webSocket ?: return
+        if (entityId.isBlank()) return
+        val id = msgId.getAndIncrement()
+        pendingResults[id] = { msg ->
+            if (msg.optBoolean("success")) {
+                val arr = msg.optJSONObject("result")
+                    ?.optJSONObject("response")
+                    ?.optJSONObject(entityId)
+                    ?.optJSONArray("forecast")
+                _forecast.value = parseForecast(arr)
+            }
+        }
+        ws.send(
+            JSONObject()
+                .put("id", id)
+                .put("type", "call_service")
+                .put("domain", "weather")
+                .put("service", "get_forecasts")
+                .put("service_data", JSONObject().put("type", type))
+                .put("target", JSONObject().put("entity_id", entityId))
+                .put("return_response", true)
+                .toString(),
+        )
+    }
+
+    private fun parseForecast(arr: JSONArray?): List<ForecastEntry> {
+        arr ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                add(
+                    ForecastEntry(
+                        datetime = o.optString("datetime"),
+                        condition = o.optString("condition"),
+                        tempHigh = if (o.has("temperature")) o.optDouble("temperature") else null,
+                        tempLow = if (o.has("templow")) o.optDouble("templow") else null,
+                    ),
+                )
+            }
+        }
     }
 
     /** One-shot REST fetch of all states, used by the settings entity picker. */
