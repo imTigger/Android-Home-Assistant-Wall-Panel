@@ -49,6 +49,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,6 +89,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
     var nightStart by remember { mutableStateOf(cfg.nightStartMinutes) }
     var nightEnd by remember { mutableStateOf(cfg.nightEndMinutes) }
     var resleep by remember { mutableStateOf(cfg.resleepSeconds) }
+    var keepAwake by remember { mutableStateOf(cfg.keepAwake) }
     var colsLandscape by remember { mutableStateOf(cfg.columnsLandscape) }
     var colsPortrait by remember { mutableStateOf(cfg.columnsPortrait) }
     var weatherEntity by remember { mutableStateOf(cfg.weatherEntity) }
@@ -109,13 +111,34 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 lights = lights.filter { e -> e.entityId.isNotBlank() },
                 tempEntity = tempEntity, humidityEntity = humidityEntity,
                 nightEnabled = nightEnabled, nightStartMinutes = nightStart, nightEndMinutes = nightEnd,
-                resleepSeconds = resleep,
+                resleepSeconds = resleep, keepAwake = keepAwake,
                 columnsLandscape = colsLandscape, columnsPortrait = colsPortrait,
                 weatherEntity = weatherEntity, weatherDynamicBg = weatherBg,
                 weatherShowForecast = weatherForecast, animationsEnabled = animations,
             )
         }
     }
+
+    fun loadEntities() {
+        if (url.isBlank() || token.isBlank()) return
+        loadMsg = "Loading…"
+        scope.launch {
+            val result = vm.discoverEntities(cfg.copy(baseUrl = url, token = token))
+            result.onSuccess { list ->
+                val tileDomains = setOf(
+                    "light", "switch", "fan", "input_boolean",
+                    "automation", "scene", "script",
+                )
+                lightOptions = list.filter { it.domain in tileDomains }.sortedBy { it.friendlyName }
+                sensorOptions = list.filter { it.domain == "sensor" }.sortedBy { it.friendlyName }
+                weatherOptions = list.filter { it.domain == "weather" }.sortedBy { it.friendlyName }
+                loadMsg = "Loaded ${lightOptions.size} tiles, ${sensorOptions.size} sensors"
+            }.onFailure { loadMsg = "Failed: ${it.message}" }
+        }
+    }
+
+    // Auto-load entities when the settings screen opens, if already configured.
+    LaunchedEffect(Unit) { loadEntities() }
 
     BackHandler { if (showScanner) showScanner = false else { persist(); onClose() } }
 
@@ -143,22 +166,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
-                    onClick = {
-                        loadMsg = "Loading…"
-                        scope.launch {
-                            val result = vm.discoverEntities(cfg.copy(baseUrl = url, token = token))
-                            result.onSuccess { list ->
-                                val tileDomains = setOf(
-                                    "light", "switch", "fan", "input_boolean",
-                                    "automation", "scene", "script",
-                                )
-                                lightOptions = list.filter { it.domain in tileDomains }.sortedBy { it.friendlyName }
-                                sensorOptions = list.filter { it.domain == "sensor" }.sortedBy { it.friendlyName }
-                                weatherOptions = list.filter { it.domain == "weather" }.sortedBy { it.friendlyName }
-                                loadMsg = "Loaded ${lightOptions.size} tiles, ${sensorOptions.size} sensors"
-                            }.onFailure { loadMsg = "Failed: ${it.message}" }
-                        }
-                    },
+                    onClick = { loadEntities() },
                     colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color(0xFF1A1205)),
                 ) { Text("Load entities", fontWeight = FontWeight.Bold) }
                 Spacer(Modifier.width(12.dp))
@@ -200,6 +208,12 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             }
 
             Spacer(Modifier.height(22.dp))
+            SectionTitle("Layout")
+            ColumnStepper("Columns (landscape)", colsLandscape, 1..6) { colsLandscape = it }
+            Spacer(Modifier.height(10.dp))
+            ColumnStepper("Columns (portrait)", colsPortrait, 1..6) { colsPortrait = it }
+
+            Spacer(Modifier.height(22.dp))
             SectionTitle("Climate")
             EntityAutoComplete("Temperature sensor", tempEntity, sensorOptions) { tempEntity = it }
             Spacer(Modifier.height(10.dp))
@@ -237,10 +251,17 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             }
 
             Spacer(Modifier.height(22.dp))
-            SectionTitle("Layout")
-            ColumnStepper("Columns (landscape)", colsLandscape, 1..6) { colsLandscape = it }
-            Spacer(Modifier.height(10.dp))
-            ColumnStepper("Columns (portrait)", colsPortrait, 1..6) { colsPortrait = it }
+            SectionTitle("Display")
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keep screen awake", color = TextPrimary, fontSize = 16.sp)
+                    Text(
+                        "When off, the screen sleeps on the system timeout",
+                        color = TextSecondary, fontSize = 13.sp,
+                    )
+                }
+                Switch(checked = keepAwake, onCheckedChange = { keepAwake = it })
+            }
 
             Spacer(Modifier.height(22.dp))
             SectionTitle("Night mode")
@@ -267,7 +288,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 onClick = { persist(); vm.reconnect(); onClose() },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color(0xFF1A1205)),
-            ) { Text("Save & connect", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+            ) { Text("Save", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
             Spacer(Modifier.height(40.dp))
         }
 

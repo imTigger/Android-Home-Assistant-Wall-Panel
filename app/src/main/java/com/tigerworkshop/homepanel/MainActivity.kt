@@ -16,7 +16,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.tigerworkshop.homepanel.night.NightController
+import kotlinx.coroutines.launch
 import com.tigerworkshop.homepanel.ui.HomePanelTheme
 import com.tigerworkshop.homepanel.ui.PanelScreen
 import com.tigerworkshop.homepanel.ui.SettingsScreen
@@ -35,9 +37,13 @@ class MainActivity : ComponentActivity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
         vm = ViewModelProvider(this)[PanelViewModel::class.java]
+
+        // Keep the screen awake only when enabled; otherwise the system timeout applies.
+        applyKeepAwake(vm.config.value.keepAwake)
+        lifecycleScope.launch {
+            vm.config.collect { applyKeepAwake(it.keepAwake) }
+        }
 
         enableEdgeToEdge()
         hideSystemBars()
@@ -78,6 +84,14 @@ class MainActivity : ComponentActivity() {
     private fun cancelPendingSleep() {
         pendingSleep?.let { handler.removeCallbacks(it) }
         pendingSleep = null
+    }
+
+    private fun applyKeepAwake(on: Boolean) {
+        if (on) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     private fun hideSystemBars() {

@@ -79,6 +79,29 @@ to Home Assistant over your LAN.
 
 ---
 
+## Runs on old hardware
+
+This app is built to give **spare and ageing devices** a useful second life — a
+2012 tablet is a perfect wall panel.
+
+- **Minimum Android version: 7.0 (Nougat, API 24).** It installs and runs on
+  **Android 7.0 and newer** — verified on a **Nexus 7 (2012)** running Android
+  7.1.2. (`java.time` is back-ported via core-library desugaring so date/time
+  features work on these old OS versions.)
+- **Light on resources** — native Kotlin + Compose, a single screen, and a small
+  dependency set. No heavy WebView/dashboard rendering.
+- **Performance switches for weak devices:**
+  - **Animations are off by default.** The animated weather icons are pretty but
+    cost CPU/GPU every frame; leave them off on slow hardware (or turn them on in
+    *Settings → Weather* on capable devices).
+  - **Keep screen awake** can be turned off (*Settings → Display*) so the device
+    sleeps on its normal system timeout instead of staying lit 24/7 — easier on
+    old batteries/panels and power draw.
+  - **Night mode** powers the screen fully off overnight, and **Dynamic
+    background** can be disabled for a flat, cheaper-to-draw background.
+
+---
+
 ## Build & install
 
 ```bash
@@ -89,7 +112,6 @@ adb shell am start -n com.tigerworkshop.homepanel/.MainActivity
 
 Requires the Android SDK; set `sdk.dir` in `local.properties` (not committed).
 
----
 
 ## Notes & tuning
 
@@ -112,7 +134,7 @@ Requires the Android SDK; set `sdk.dir` in `local.properties` (not committed).
 
 Kotlin · Jetpack Compose (Material 3) · OkHttp WebSocket · CameraX + ML Kit
 (QR scanning) · AGP 9.2.0 (built-in Kotlin) · Gradle 9.4.1 · Kotlin 2.1.20 ·
-minSdk 26 / targetSdk 35.
+core-library desugaring · **minSdk 24 (Android 7.0)** / targetSdk 35.
 
 ## License
 
