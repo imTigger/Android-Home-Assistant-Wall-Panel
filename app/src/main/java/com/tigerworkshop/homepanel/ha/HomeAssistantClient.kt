@@ -186,6 +186,15 @@ class HomeAssistantClient {
         callService(domain, if (on) "turn_on" else "turn_off", entityId)
     }
 
+    /** Run an action entity: trigger an automation, activate a scene, run a script. */
+    fun triggerTile(entityId: String) {
+        when (entityId.substringBefore('.')) {
+            "automation" -> callService("automation", "trigger", entityId)
+            "scene" -> callService("scene", "turn_on", entityId)
+            "script" -> callService("script", "turn_on", entityId)
+        }
+    }
+
     /** brightnessPct: 1..100 */
     fun setLightBrightness(entityId: String, brightnessPct: Int) {
         callService("light", "turn_on", entityId, JSONObject().put("brightness_pct", brightnessPct.coerceIn(1, 100)))

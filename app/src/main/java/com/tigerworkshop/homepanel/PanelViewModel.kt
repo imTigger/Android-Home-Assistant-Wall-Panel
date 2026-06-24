@@ -66,6 +66,8 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleLight(entityId: String, on: Boolean) = ha.toggleLight(entityId, on)
 
+    fun triggerTile(entityId: String) = ha.triggerTile(entityId)
+
     fun setBrightnessPct(entityId: String, pct: Int) {
         _pendingBrightness.value = _pendingBrightness.value + (entityId to pct)
         ha.setLightBrightness(entityId, pct)

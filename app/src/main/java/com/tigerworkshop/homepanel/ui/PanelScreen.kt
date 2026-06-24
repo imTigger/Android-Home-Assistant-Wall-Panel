@@ -26,8 +26,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.WaterDrop
@@ -278,6 +281,15 @@ private fun StatusDot(status: ConnectionStatus) {
     )
 }
 
+/** Entity domains that act as a momentary "run" action rather than an on/off toggle. */
+private val ACTION_DOMAINS = setOf("automation", "scene", "script")
+
+private fun actionIcon(domain: String): androidx.compose.ui.graphics.vector.ImageVector = when (domain) {
+    "automation" -> Icons.Filled.Bolt
+    "scene" -> Icons.Filled.AutoAwesome
+    else -> Icons.Filled.PlayArrow
+}
+
 @Composable
 private fun LightsGrid(
     config: Config,
@@ -306,10 +318,12 @@ private fun LightsGrid(
                 entity?.friendlyName ?: id.substringAfter('.').replace('_', ' ')
             }
             LightTile(
+                entityId = id,
                 displayName = name,
                 entity = entity,
                 pendingPct = pending[id],
                 onToggle = { on -> vm.toggleLight(id, on); if (!on) vm.clearPending(id) },
+                onActivate = { vm.triggerTile(id) },
                 onBrightness = { pct -> vm.setBrightnessPct(id, pct) },
                 onBrightnessSettled = { vm.clearPending(id) },
                 onLongPress = { onLongPress(id) },
@@ -321,34 +335,47 @@ private fun LightsGrid(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LightTile(
+    entityId: String,
     displayName: String,
     entity: EntityState?,
     pendingPct: Int?,
     onToggle: (Boolean) -> Unit,
+    onActivate: () -> Unit,
     onBrightness: (Int) -> Unit,
     onBrightnessSettled: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    val domain = entityId.substringBefore('.')
+    val isAction = domain in ACTION_DOMAINS
     val on = entity?.isOn == true
     val name = displayName
-    val unavailable = entity == null || entity.isUnavailable
-    val dimmable = entity != null && entity.supportsBrightness
+    // Action entities (e.g. automations) read as unavailable less often; only block on truly missing.
+    val unavailable = !isAction && (entity == null || entity.isUnavailable)
+    val dimmable = !isAction && entity != null && entity.supportsBrightness
+
+    // Action tiles briefly flash when tapped to confirm the trigger fired.
+    var flash by remember { mutableStateOf(false) }
+    LaunchedEffect(flash) { if (flash) { delay(320); flash = false } }
+    val active = if (isAction) flash else on
 
     val bg by animateColorAsState(
-        if (on) PanelSurfaceOn.copy(alpha = 0.85f) else PanelSurface.copy(alpha = 0.55f), label = "tilebg",
+        if (active) PanelSurfaceOn.copy(alpha = 0.85f) else PanelSurface.copy(alpha = 0.55f), label = "tilebg",
     )
-    val iconTint by animateColorAsState(if (on) Accent else TextSecondary, label = "icon")
+    val iconTint by animateColorAsState(if (active) Accent else TextSecondary, label = "icon")
 
     val actualPct = entity?.brightness?.let { (it * 100 + 127) / 255 } ?: 100
     val shownPct = pendingPct ?: if (on) actualPct else 0
     val fraction = (shownPct / 100f).coerceIn(0f, 1f)
 
     val stateLabel = when {
+        isAction -> if (domain == "automation" && entity?.isOn == false) "Disabled" else "Tap to run"
         unavailable -> "unavailable"
         dimmable && on -> "$shownPct%"
         on -> "On"
         else -> "Off"
     }
+
+    val icon = if (isAction) actionIcon(domain) else if (on) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb
 
     Surface(
         color = bg,
@@ -358,7 +385,7 @@ private fun LightTile(
             .height(140.dp)
             .combinedClickable(
                 enabled = !unavailable,
-                onClick = { onToggle(!on) },
+                onClick = { if (isAction) { flash = true; onActivate() } else onToggle(!on) },
                 onLongClick = if (dimmable) onLongPress else null,
             ),
     ) {
@@ -366,7 +393,7 @@ private fun LightTile(
             // Left: icon + name + state (fixed positions, no shift on toggle)
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Icon(
-                    if (on) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
+                    icon,
                     null,
                     tint = iconTint,
                     modifier = Modifier.size(40.dp),

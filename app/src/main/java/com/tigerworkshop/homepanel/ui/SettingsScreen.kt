@@ -143,11 +143,14 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                         scope.launch {
                             val result = vm.discoverEntities(cfg.copy(baseUrl = url, token = token))
                             result.onSuccess { list ->
-                                val onOffDomains = setOf("light", "switch", "fan", "input_boolean")
-                                lightOptions = list.filter { it.domain in onOffDomains }.sortedBy { it.friendlyName }
+                                val tileDomains = setOf(
+                                    "light", "switch", "fan", "input_boolean",
+                                    "automation", "scene", "script",
+                                )
+                                lightOptions = list.filter { it.domain in tileDomains }.sortedBy { it.friendlyName }
                                 sensorOptions = list.filter { it.domain == "sensor" }.sortedBy { it.friendlyName }
                                 weatherOptions = list.filter { it.domain == "weather" }.sortedBy { it.friendlyName }
-                                loadMsg = "Loaded ${lightOptions.size} controllable, ${sensorOptions.size} sensors"
+                                loadMsg = "Loaded ${lightOptions.size} tiles, ${sensorOptions.size} sensors"
                             }.onFailure { loadMsg = "Failed: ${it.message}" }
                         }
                     },
@@ -158,7 +161,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             }
 
             Spacer(Modifier.height(22.dp))
-            SectionTitle("Lights")
+            SectionTitle("Tiles")
             lights.forEachIndexed { i, entry ->
                 LightRow(
                     index = i,
@@ -188,7 +191,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
             ) {
                 Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Add light")
+                Text("Add tile")
             }
 
             Spacer(Modifier.height(22.dp))
@@ -267,7 +270,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 ?: "this light"
             AlertDialog(
                 onDismissRequest = { pendingDelete = null },
-                title = { Text("Remove light?") },
+                title = { Text("Remove tile?") },
                 text = { Text("Remove “$label” from the panel?") },
                 confirmButton = {
                     TextButton(onClick = {
@@ -314,7 +317,7 @@ private fun LightRow(
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Light ${index + 1}", color = TextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text("Tile ${index + 1}", color = TextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
             IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.Filled.KeyboardArrowUp, "Move up",
