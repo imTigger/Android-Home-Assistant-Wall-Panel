@@ -2,12 +2,13 @@ package com.tigerworkshop.homepanel.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -131,7 +132,13 @@ private fun CameraScanner(onResult: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val handled = remember { AtomicBoolean(false) }
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            // TextureView-backed preview; SurfaceView (PERFORMANCE) often renders
+            // black inside a Compose AndroidView on older devices.
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
 
     DisposableEffect(Unit) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -142,28 +149,61 @@ private fun CameraScanner(onResult: (String) -> Unit) {
                 .build(),
         )
         val mainExecutor = ContextCompat.getMainExecutor(context)
+        val handler = Handler(Looper.getMainLooper())
+        var running = true
+        var mirror = false
+        var busy = false
+
+        // Scan by snapshotting the preview every ~350 ms instead of running a second
+        // ImageAnalysis stream. A single camera stream keeps legacy camera HALs
+        // stable (older devices error/reopen when Preview + ImageAnalysis run at once).
+        val poll = object : Runnable {
+            override fun run() {
+                if (!running) return
+                val bmp = previewView.bitmap
+                if (bmp != null && !busy && !handled.get()) {
+                    busy = true
+                    val src = if (mirror) mirrorBitmap(bmp) else bmp
+                    scanner.process(InputImage.fromBitmap(src, 0))
+                        .addOnSuccessListener { codes ->
+                            codes.firstOrNull()?.rawValue?.let { v ->
+                                if (handled.compareAndSet(false, true)) onResult(v)
+                            }
+                        }
+                        .addOnCompleteListener { busy = false }
+                }
+                handler.postDelayed(this, 350)
+            }
+        }
 
         cameraProviderFuture.addListener({
-            provider = cameraProviderFuture.get()
+            val p = cameraProviderFuture.get()
+            provider = p
             val preview = Preview.Builder().build().also {
                 it.surfaceProvider = previewView.surfaceProvider
             }
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-            analysis.setAnalyzer(mainExecutor, QrAnalyzer(scanner) { value ->
-                if (handled.compareAndSet(false, true)) onResult(value)
-            })
+            // Prefer the back camera, but fall back to the front (e.g. tablets with
+            // no rear camera) or any available camera.
+            val selector = when {
+                p.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                p.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                else -> CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            // The front camera preview is mirrored for display; un-mirror snapshots
+            // before decoding (a mirrored QR code won't decode).
+            mirror = selector == CameraSelector.DEFAULT_FRONT_CAMERA
             try {
-                provider?.unbindAll()
-                provider?.bindToLifecycle(
-                    lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis,
-                )
-            } catch (_: Exception) {
+                p.unbindAll()
+                p.bindToLifecycle(lifecycleOwner, selector, preview)
+                handler.postDelayed(poll, 600)
+            } catch (e: Exception) {
+                android.util.Log.e("QrScanner", "camera bind failed", e)
             }
         }, mainExecutor)
 
         onDispose {
+            running = false
+            handler.removeCallbacks(poll)
             provider?.unbindAll()
             scanner.close()
         }
@@ -172,22 +212,7 @@ private fun CameraScanner(onResult: (String) -> Unit) {
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
-private class QrAnalyzer(
-    private val scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
-    private val onFound: (String) -> Unit,
-) : ImageAnalysis.Analyzer {
-    @OptIn(ExperimentalGetImage::class)
-    override fun analyze(imageProxy: androidx.camera.core.ImageProxy) {
-        val media = imageProxy.image
-        if (media == null) {
-            imageProxy.close()
-            return
-        }
-        val image = InputImage.fromMediaImage(media, imageProxy.imageInfo.rotationDegrees)
-        scanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                barcodes.firstOrNull()?.rawValue?.let { onFound(it) }
-            }
-            .addOnCompleteListener { imageProxy.close() }
-    }
+private fun mirrorBitmap(src: Bitmap): Bitmap {
+    val m = Matrix().apply { preScale(-1f, 1f) }
+    return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, false)
 }
