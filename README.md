@@ -114,7 +114,16 @@ Kotlin · Jetpack Compose (Material 3) · OkHttp WebSocket · CameraX + ML Kit
 (QR scanning) · AGP 9.2.0 (built-in Kotlin) · Gradle 9.4.1 · Kotlin 2.1.20 ·
 minSdk 26 / targetSdk 35.
 
-## License & disclaimer
+## License
+
+Licensed under the **Apache License, Version 2.0** — see [`LICENSE`](LICENSE)
+and [`NOTICE`](NOTICE). You may use, modify and distribute this software,
+including commercially, under the terms of the license.
+
+> Copyright 2026 Tiger Fok. Licensed under the Apache License, Version 2.0 —
+> <http://www.apache.org/licenses/LICENSE-2.0>
+
+## Disclaimer
 
 A personal, open hobby project. Not affiliated with or endorsed by Home Assistant
 or any hardware vendor. "Home Assistant" and Met.no are trademarks of their
