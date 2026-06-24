@@ -67,7 +67,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.tigerworkshop.homepanel.PanelViewModel
 import com.tigerworkshop.homepanel.data.EntityState
 import com.tigerworkshop.homepanel.data.LightEntry
+import com.tigerworkshop.homepanel.data.RESLEEP_OPTIONS
 import com.tigerworkshop.homepanel.data.minutesToHhmm
+import com.tigerworkshop.homepanel.data.resleepLabel
 import com.tigerworkshop.homepanel.night.NightController
 import com.tigerworkshop.homepanel.night.PanelDeviceAdminReceiver
 import kotlinx.coroutines.launch
@@ -85,6 +87,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
     var nightEnabled by remember { mutableStateOf(cfg.nightEnabled) }
     var nightStart by remember { mutableStateOf(cfg.nightStartMinutes) }
     var nightEnd by remember { mutableStateOf(cfg.nightEndMinutes) }
+    var resleep by remember { mutableStateOf(cfg.resleepSeconds) }
     var colsLandscape by remember { mutableStateOf(cfg.columnsLandscape) }
     var colsPortrait by remember { mutableStateOf(cfg.columnsPortrait) }
     var weatherEntity by remember { mutableStateOf(cfg.weatherEntity) }
@@ -106,6 +109,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 lights = lights.filter { e -> e.entityId.isNotBlank() },
                 tempEntity = tempEntity, humidityEntity = humidityEntity,
                 nightEnabled = nightEnabled, nightStartMinutes = nightStart, nightEndMinutes = nightEnd,
+                resleepSeconds = resleep,
                 columnsLandscape = colsLandscape, columnsPortrait = colsPortrait,
                 weatherEntity = weatherEntity, weatherDynamicBg = weatherBg,
                 weatherShowForecast = weatherForecast, animationsEnabled = animations,
@@ -249,6 +253,12 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 TimeBox("Sleep at", nightStart, Modifier.weight(1f)) { nightStart = it }
                 TimeBox("Wake at", nightEnd, Modifier.weight(1f)) { nightEnd = it }
             }
+            Spacer(Modifier.height(10.dp))
+            ResleepDropdown(resleep) { resleep = it }
+            Text(
+                "If you wake the screen during night hours, it powers off again after this delay.",
+                color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp),
+            )
             Spacer(Modifier.height(12.dp))
             DeviceAdminRow()
 
@@ -450,6 +460,37 @@ private fun EntityAutoComplete(
                         expanded = false
                     },
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ResleepDropdown(value: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        TextField(
+            value = resleepLabel(value),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Re-sleep after waking") },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, tint = TextSecondary) },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = PanelSurface,
+                unfocusedContainerColor = PanelSurface,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedLabelColor = Accent,
+                unfocusedLabelColor = TextSecondary,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            RESLEEP_OPTIONS.forEach { opt ->
+                DropdownMenuItem(text = { Text(resleepLabel(opt)) }, onClick = { onSelect(opt); expanded = false })
             }
         }
     }

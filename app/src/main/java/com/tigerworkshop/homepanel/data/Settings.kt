@@ -42,6 +42,7 @@ class Settings(context: Context) {
         weatherDynamicBg = prefs.getBoolean(K_WEATHER_BG, true),
         weatherShowForecast = prefs.getBoolean(K_WEATHER_FORECAST, true),
         animationsEnabled = prefs.getBoolean(K_ANIMATIONS, true),
+        resleepSeconds = prefs.getInt(K_RESLEEP, 30),
     )
 
     private fun readLights(): List<LightEntry> {
@@ -85,6 +86,7 @@ class Settings(context: Context) {
             putBoolean(K_WEATHER_BG, c.weatherDynamicBg)
             putBoolean(K_WEATHER_FORECAST, c.weatherShowForecast)
             putBoolean(K_ANIMATIONS, c.animationsEnabled)
+            putInt(K_RESLEEP, c.resleepSeconds)
         }.apply()
     }
 
@@ -104,6 +106,7 @@ class Settings(context: Context) {
         private const val K_WEATHER_BG = "weather_dynamic_bg"
         private const val K_WEATHER_FORECAST = "weather_show_forecast"
         private const val K_ANIMATIONS = "animations_enabled"
+        private const val K_RESLEEP = "resleep_seconds"
     }
 }
 
@@ -122,6 +125,7 @@ data class Config(
     val weatherDynamicBg: Boolean = true,
     val weatherShowForecast: Boolean = true,
     val animationsEnabled: Boolean = true,
+    val resleepSeconds: Int = 30,
 ) {
     val isConfigured: Boolean get() = baseUrl.isNotBlank() && token.isNotBlank()
     val configuredLights: List<LightEntry> get() = lights.filter { it.entityId.isNotBlank() }
@@ -137,4 +141,14 @@ fun minutesToHhmm(mins: Int): String {
     val h = (mins / 60) % 24
     val m = mins % 60
     return "%02d:%02d".format(h, m)
+}
+
+/** Re-sleep grace-period options (seconds); 0 = never auto-sleep after a manual wake. */
+val RESLEEP_OPTIONS = listOf(15, 30, 60, 120, 180, 300, 600, 0)
+
+fun resleepLabel(seconds: Int): String = when {
+    seconds == 0 -> "Never"
+    seconds < 60 -> "$seconds seconds"
+    seconds % 60 == 0 -> "${seconds / 60} minute" + if (seconds / 60 > 1) "s" else ""
+    else -> "$seconds seconds"
 }

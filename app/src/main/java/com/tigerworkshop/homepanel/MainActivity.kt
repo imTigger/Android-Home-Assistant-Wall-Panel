@@ -61,9 +61,11 @@ class MainActivity : ComponentActivity() {
         if (!this::vm.isInitialized) return
         val cfg = vm.config.value
         cancelPendingSleep()
-        if (cfg.nightEnabled && NightController.isNightNow(cfg) && NightController.isDeviceAdminActive(this)) {
+        if (cfg.nightEnabled && cfg.resleepSeconds > 0 &&
+            NightController.isNightNow(cfg) && NightController.isDeviceAdminActive(this)
+        ) {
             pendingSleep = Runnable { NightController.sleepNow(this) }.also {
-                handler.postDelayed(it, 30_000L)
+                handler.postDelayed(it, cfg.resleepSeconds * 1000L)
             }
         }
     }
