@@ -111,13 +111,15 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors))) {
             Box(Modifier.fillMaxSize().padding(20.dp)) {
+                val landscape =
+                    LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
                 Column(Modifier.fillMaxSize()) {
                     HeaderBar(config, states, weather, onOpenWeather = { if (weather != null) weatherSheet = true })
                     if (weather != null && config.weatherShowForecast && forecast.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
-                        ForecastStrip(forecast, config.animationsEnabled, onClick = { weatherSheet = true })
+                        Spacer(Modifier.height(if (landscape) 12.dp else 16.dp))
+                        ForecastStrip(forecast, config.animationsEnabled, landscape, onClick = { weatherSheet = true })
                     }
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(if (landscape) 12.dp else 18.dp))
                     if (!config.isConfigured) {
                         NotConfigured(onOpenSettings)
                     } else {
@@ -183,15 +185,27 @@ private fun HeaderBar(
     val temp = states[config.tempEntity]
     val humidity = states[config.humidityEntity]
     val animated = config.animationsEnabled
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val hasClimate = temp != null || humidity != null
 
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
-            ClockBlock(Modifier.weight(1f))
+            ClockBlock()
+            if (landscape && hasClimate) {
+                // Use the wide space between the clock and the weather for the climate chips.
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
+                    ClimateChips(temp, humidity)
+                }
+                Spacer(Modifier.weight(1f))
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
             if (weather != null) {
                 WeatherNow(weather, animated, onOpenWeather)
             }
         }
-        if (temp != null || humidity != null) {
+        if (!landscape && hasClimate) {
             Spacer(Modifier.height(14.dp))
             Row { ClimateChips(temp, humidity) }
         }
@@ -230,14 +244,17 @@ private fun WeatherNow(weather: EntityState, animated: Boolean, onClick: () -> U
 }
 
 @Composable
-private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean, onClick: () -> Unit) {
+private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean, compact: Boolean, onClick: () -> Unit) {
+    val vPad = if (compact) 8.dp else 14.dp
+    val glyph = if (compact) 30.dp else 38.dp
+    val gap = if (compact) 2.dp else 4.dp
     Surface(
         color = PanelSurface.copy(alpha = 0.45f),
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { onClick() },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = vPad, horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             forecast.take(5).forEach { f ->
@@ -246,9 +263,9 @@ private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean, onCl
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(forecastDayLabel(f.datetime), fontSize = 13.sp, color = TextSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    WeatherGlyph(f.condition, 38.dp, animated)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(gap))
+                    WeatherGlyph(f.condition, glyph, animated)
+                    Spacer(Modifier.height(gap))
                     Text(
                         f.tempHigh?.let { "${it.roundToInt()}°" } ?: "–",
                         fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
@@ -579,6 +596,7 @@ private fun LightsGrid(
                 onBrightness = { pct -> vm.setBrightnessPct(id, pct) },
                 onBrightnessSettled = { vm.clearPending(id) },
                 onLongPress = { onLongPress(id) },
+                compact = landscape,
             )
         }
     }
@@ -596,7 +614,11 @@ private fun LightTile(
     onBrightness: (Int) -> Unit,
     onBrightnessSettled: () -> Unit,
     onLongPress: () -> Unit,
+    compact: Boolean = false,
 ) {
+    val tileHeight = if (compact) 116.dp else 140.dp
+    val tilePadding = if (compact) 14.dp else 16.dp
+    val iconSize = if (compact) 34.dp else 40.dp
     val domain = entityId.substringBefore('.')
     val isAction = domain in ACTION_DOMAINS
     val on = entity?.isOn == true
@@ -634,21 +656,21 @@ private fun LightTile(
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(tileHeight)
             .combinedClickable(
                 enabled = !unavailable,
                 onClick = { if (isAction) { flash = true; onActivate() } else onToggle(!on) },
                 onLongClick = if (dimmable) onLongPress else null,
             ),
     ) {
-        Row(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(Modifier.fillMaxSize().padding(tilePadding)) {
             // Left: icon + name + state (fixed positions, no shift on toggle)
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Icon(
                     icon,
                     null,
                     tint = iconTint,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(iconSize),
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
