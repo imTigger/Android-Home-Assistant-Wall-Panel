@@ -25,6 +25,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     val states = ha.states
     val status = ha.status
     val forecast = ha.forecast
+    val hourlyForecast = ha.forecastHourly
 
     /** Local optimistic brightness overrides so the slider feels instant. */
     private val _pendingBrightness = MutableStateFlow<Map<String, Int>>(emptyMap())
@@ -45,22 +46,26 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
                 .distinctUntilChanged()
                 .collect { NightController.schedule(getApplication(), settings.value) }
         }
-        // Fetch the weather forecast whenever we (re)connect with a weather entity set.
+        // Fetch the weather forecasts whenever we (re)connect with a weather entity set.
         viewModelScope.launch {
             ha.status.collect { st ->
-                if (st == ConnectionStatus.CONNECTED) {
-                    settings.value.weatherEntity.takeIf { it.isNotBlank() }?.let { ha.requestForecast(it) }
-                }
+                if (st == ConnectionStatus.CONNECTED) refreshForecasts()
             }
         }
-        // Refresh the forecast periodically.
+        // Refresh the forecasts periodically.
         viewModelScope.launch {
             while (true) {
                 delay(30 * 60 * 1000L)
-                if (status.value == ConnectionStatus.CONNECTED) {
-                    settings.value.weatherEntity.takeIf { it.isNotBlank() }?.let { ha.requestForecast(it) }
-                }
+                if (status.value == ConnectionStatus.CONNECTED) refreshForecasts()
             }
+        }
+    }
+
+    fun refreshForecasts() {
+        val w = settings.value.weatherEntity
+        if (w.isNotBlank()) {
+            ha.requestForecast(w, "daily")
+            ha.requestForecast(w, "hourly")
         }
     }
 

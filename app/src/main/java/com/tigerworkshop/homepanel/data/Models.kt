@@ -7,6 +7,7 @@ data class EntityState(
     val entityId: String,
     val state: String,
     val attributes: JSONObject,
+    val lastChanged: String = "",
 ) {
     val domain: String get() = entityId.substringBefore('.')
 
@@ -46,6 +47,7 @@ data class EntityState(
                 entityId = id,
                 state = obj.optString("state"),
                 attributes = obj.optJSONObject("attributes") ?: JSONObject(),
+                lastChanged = obj.optString("last_changed"),
             )
         }
     }

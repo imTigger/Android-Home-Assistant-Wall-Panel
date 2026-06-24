@@ -45,6 +45,9 @@ class HomeAssistantClient {
     private val _forecast = MutableStateFlow<List<ForecastEntry>>(emptyList())
     val forecast: StateFlow<List<ForecastEntry>> = _forecast
 
+    private val _forecastHourly = MutableStateFlow<List<ForecastEntry>>(emptyList())
+    val forecastHourly: StateFlow<List<ForecastEntry>> = _forecastHourly
+
     /** Callbacks awaiting a "result" message, keyed by request id (e.g. get_forecasts). */
     private val pendingResults = java.util.concurrent.ConcurrentHashMap<Int, (JSONObject) -> Unit>()
 
@@ -211,7 +214,8 @@ class HomeAssistantClient {
                     ?.optJSONObject("response")
                     ?.optJSONObject(entityId)
                     ?.optJSONArray("forecast")
-                _forecast.value = parseForecast(arr)
+                val parsed = parseForecast(arr)
+                if (type == "hourly") _forecastHourly.value = parsed else _forecast.value = parsed
             }
         }
         ws.send(

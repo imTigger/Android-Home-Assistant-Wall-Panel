@@ -5,8 +5,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -32,7 +38,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material3.Button
@@ -53,6 +61,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -76,11 +86,18 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
     val pending by vm.pendingBrightness.collectAsStateLifecycleSafe()
 
     val forecast by vm.forecast.collectAsStateLifecycleSafe()
+    val hourly by vm.hourlyForecast.collectAsStateLifecycleSafe()
 
     var sheetId by remember { mutableStateOf<String?>(null) }
+    var weatherSheet by remember { mutableStateOf(false) }
 
-    // Back closes the brightness sheet if open; otherwise swallow it to keep the panel in front.
-    BackHandler { if (sheetId != null) sheetId = null }
+    // Back closes any open overlay first; otherwise it is swallowed to keep the panel in front.
+    BackHandler {
+        when {
+            sheetId != null -> sheetId = null
+            weatherSheet -> weatherSheet = false
+        }
+    }
 
     val weather = config.weatherEntity.takeIf { it.isNotBlank() }?.let { states[it] }
     val condition = weather?.state.orEmpty()
@@ -95,10 +112,10 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors))) {
             Box(Modifier.fillMaxSize().padding(20.dp)) {
                 Column(Modifier.fillMaxSize()) {
-                    HeaderBar(config, states, weather)
+                    HeaderBar(config, states, weather, onOpenWeather = { if (weather != null) weatherSheet = true })
                     if (weather != null && config.weatherShowForecast && forecast.isNotEmpty()) {
                         Spacer(Modifier.height(16.dp))
-                        ForecastStrip(forecast, config.animationsEnabled)
+                        ForecastStrip(forecast, config.animationsEnabled, onClick = { weatherSheet = true })
                     }
                     Spacer(Modifier.height(18.dp))
                     if (!config.isConfigured) {
@@ -139,6 +156,20 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
                 onClose = { sheetId = null },
             )
         }
+
+        if (weatherSheet && weather != null) {
+            val wName = weather.attributes.optString("friendly_name").ifBlank {
+                config.weatherEntity.substringAfter('.').replace('_', ' ')
+            }
+            WeatherForecastOverlay(
+                entity = weather,
+                name = wName,
+                daily = forecast,
+                hourly = hourly,
+                animated = config.animationsEnabled,
+                onClose = { weatherSheet = false },
+            )
+        }
     }
 }
 
@@ -147,6 +178,7 @@ private fun HeaderBar(
     config: Config,
     states: Map<String, EntityState>,
     weather: EntityState?,
+    onOpenWeather: () -> Unit,
 ) {
     val temp = states[config.tempEntity]
     val humidity = states[config.humidityEntity]
@@ -156,7 +188,7 @@ private fun HeaderBar(
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             ClockBlock(Modifier.weight(1f))
             if (weather != null) {
-                WeatherNow(weather, animated)
+                WeatherNow(weather, animated, onOpenWeather)
             }
         }
         if (temp != null || humidity != null) {
@@ -176,12 +208,15 @@ private fun WeatherGlyph(condition: String, size: androidx.compose.ui.unit.Dp, a
 }
 
 @Composable
-private fun WeatherNow(weather: EntityState, animated: Boolean) {
+private fun WeatherNow(weather: EntityState, animated: Boolean, onClick: () -> Unit) {
     val condition = weather.state
     val temp = weather.attributes.optDouble("temperature").takeIf { !it.isNaN() }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 10.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(top = 10.dp, start = 6.dp),
     ) {
         Column(horizontalAlignment = Alignment.End) {
             if (temp != null) {
@@ -195,8 +230,12 @@ private fun WeatherNow(weather: EntityState, animated: Boolean) {
 }
 
 @Composable
-private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean) {
-    Surface(color = PanelSurface.copy(alpha = 0.45f), shape = RoundedCornerShape(20.dp)) {
+private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = PanelSurface.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { onClick() },
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -221,6 +260,209 @@ private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean) {
             }
         }
     }
+}
+
+/** Tapping the weather opens this Home-Assistant-style forecast dialog. */
+@Composable
+private fun WeatherForecastOverlay(
+    entity: EntityState,
+    name: String,
+    daily: List<ForecastEntry>,
+    hourly: List<ForecastEntry>,
+    animated: Boolean,
+    onClose: () -> Unit,
+) {
+    val a = entity.attributes
+    val cond = entity.state
+    val tUnit = a.optString("temperature_unit").ifBlank { "°" }
+    val temp = a.optDouble("temperature").takeIf { !it.isNaN() }
+    val high = daily.firstOrNull()?.tempHigh
+    val low = daily.firstOrNull()?.tempLow
+    var tab by remember { mutableStateOf(0) }
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        // Scrim: tap outside the card to close.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xCC04070D))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onClose() },
+        )
+        Surface(
+            color = PanelSurfaceHi,
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .padding(top = 36.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                // Consume taps on the card so they don't reach the scrim (no ripple).
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {},
+        ) {
+            Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState())) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Forecast", fontSize = 13.sp, color = TextSecondary)
+                        Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.Close, "Close", tint = TextSecondary, modifier = Modifier.size(28.dp))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    WeatherGlyph(cond, 60.dp, animated)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(prettyCondition(cond), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                        if (entity.lastChanged.isNotBlank()) {
+                            Text(relativeTimeLabel(entity.lastChanged), fontSize = 13.sp, color = TextSecondary)
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (temp != null) {
+                            Text("${oneDecimal(temp)} $tUnit", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                        if (high != null && low != null) {
+                            Text("${oneDecimal(high)} / ${oneDecimal(low)}", fontSize = 13.sp, color = TextSecondary)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                a.optDouble("pressure").takeIf { !it.isNaN() }?.let {
+                    AttrRow(Icons.Outlined.Speed, "Air pressure", "${trimNum(it)} ${a.optString("pressure_unit")}".trim())
+                }
+                a.optDouble("humidity").takeIf { !it.isNaN() }?.let {
+                    AttrRow(Icons.Outlined.WaterDrop, "Humidity", "${trimNum(it)}%")
+                }
+                a.optDouble("wind_speed").takeIf { !it.isNaN() }?.let {
+                    val dir = a.optDouble("wind_bearing").takeIf { d -> !d.isNaN() }?.let { d -> " (${degToCompass(d)})" } ?: ""
+                    AttrRow(Icons.Outlined.Air, "Wind speed", "${trimNum(it)} ${a.optString("wind_speed_unit")}$dir".trim())
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Forecast:", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    TabButton("Daily", tab == 0, Modifier.weight(1f)) { tab = 0 }
+                    TabButton("Hourly", tab == 1, Modifier.weight(1f)) { tab = 1 }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    if (tab == 0) {
+                        daily.take(7).forEach { f ->
+                            ForecastCol(forecastDayLabel(f.datetime), null, f.condition, f.tempHigh, f.tempLow, animated)
+                        }
+                    } else {
+                        var prevDay = ""
+                        hourly.take(16).forEach { f ->
+                            val d = dayShort(f.datetime)
+                            val showDay = d != prevDay
+                            prevDay = d
+                            ForecastCol(if (showDay) d else "", hourLabel(f.datetime), f.condition, f.tempHigh, null, animated)
+                        }
+                    }
+                }
+                val attribution = a.optString("attribution")
+                if (attribution.isNotBlank()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        attribution, fontSize = 11.sp, color = TextSecondary,
+                        modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttrRow(icon: ImageVector, label: String, value: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+    ) {
+        Icon(icon, null, tint = AccentCool, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, fontSize = 15.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 15.sp, color = TextSecondary)
+    }
+}
+
+@Composable
+private fun TabButton(text: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.clip(RoundedCornerShape(8.dp)).clickable { onClick() }.padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text, fontSize = 16.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) AccentCool else TextSecondary,
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth().height(2.dp).background(if (selected) AccentCool else Color.Transparent))
+    }
+}
+
+@Composable
+private fun ForecastCol(top: String, time: String?, condition: String, high: Double?, low: Double?, animated: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp)) {
+        Text(top.ifBlank { " " }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1)
+        if (time != null) Text(time, fontSize = 12.sp, color = TextSecondary)
+        Spacer(Modifier.height(6.dp))
+        WeatherGlyph(condition, 34.dp, animated)
+        Spacer(Modifier.height(6.dp))
+        Text(high?.let { "${it.roundToInt()}°" } ?: "–", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        if (low != null) Text("${low.roundToInt()}°", fontSize = 12.sp, color = TextSecondary)
+    }
+}
+
+private fun oneDecimal(d: Double): String = "%.1f".format(d)
+
+private fun trimNum(d: Double): String =
+    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
+
+private fun degToCompass(deg: Double): String {
+    val dirs = arrayOf(
+        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+        "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+    )
+    val idx = (((deg % 360) + 360) % 360 / 22.5).roundToInt() % 16
+    return dirs[idx]
+}
+
+private fun relativeTimeLabel(iso: String): String {
+    val then = runCatching { java.time.OffsetDateTime.parse(iso) }.getOrNull() ?: return ""
+    val mins = java.time.Duration.between(then, java.time.OffsetDateTime.now()).toMinutes()
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "$mins min ago"
+        mins < 1440 -> "${mins / 60} hours ago"
+        else -> "${mins / 1440} days ago"
+    }
+}
+
+private fun hourLabel(iso: String): String {
+    val dt = runCatching {
+        java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.systemDefault())
+    }.getOrNull() ?: return ""
+    return "%02d:00".format(dt.hour)
+}
+
+private fun dayShort(iso: String): String {
+    val d = runCatching {
+        java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDate()
+    }.getOrNull() ?: return ""
+    return if (d == java.time.LocalDate.now()) "Today"
+    else d.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
 }
 
 @Composable
