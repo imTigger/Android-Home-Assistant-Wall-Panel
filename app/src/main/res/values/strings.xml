@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Home Panel</string>
+    <string name="device_admin_label">Home Panel night mode</string>
+    <string name="device_admin_description">Allows Home Panel to turn the screen off at night and wake it in the morning.</string>
+</resources>
