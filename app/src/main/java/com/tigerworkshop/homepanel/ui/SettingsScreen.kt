@@ -90,6 +90,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
     var weatherEntity by remember { mutableStateOf(cfg.weatherEntity) }
     var weatherBg by remember { mutableStateOf(cfg.weatherDynamicBg) }
     var weatherForecast by remember { mutableStateOf(cfg.weatherShowForecast) }
+    var animations by remember { mutableStateOf(cfg.animationsEnabled) }
     var showScanner by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Int?>(null) }
 
@@ -107,7 +108,7 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                 nightEnabled = nightEnabled, nightStartMinutes = nightStart, nightEndMinutes = nightEnd,
                 columnsLandscape = colsLandscape, columnsPortrait = colsPortrait,
                 weatherEntity = weatherEntity, weatherDynamicBg = weatherBg,
-                weatherShowForecast = weatherForecast,
+                weatherShowForecast = weatherForecast, animationsEnabled = animations,
             )
         }
     }
@@ -221,6 +222,14 @@ fun SettingsScreen(vm: PanelViewModel, onClose: () -> Unit) {
                     Text("Display the multi-day forecast strip", color = TextSecondary, fontSize = 13.sp)
                 }
                 Switch(checked = weatherForecast, onCheckedChange = { weatherForecast = it })
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Animations", color = TextPrimary, fontSize = 16.sp)
+                    Text("Animated weather icons", color = TextSecondary, fontSize = 13.sp)
+                }
+                Switch(checked = animations, onCheckedChange = { animations = it })
             }
 
             Spacer(Modifier.height(22.dp))

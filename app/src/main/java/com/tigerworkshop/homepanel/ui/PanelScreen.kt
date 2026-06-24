@@ -98,7 +98,7 @@ fun PanelScreen(vm: PanelViewModel, onOpenSettings: () -> Unit) {
                     HeaderBar(config, states, weather)
                     if (weather != null && config.weatherShowForecast && forecast.isNotEmpty()) {
                         Spacer(Modifier.height(16.dp))
-                        ForecastStrip(forecast)
+                        ForecastStrip(forecast, config.animationsEnabled)
                     }
                     Spacer(Modifier.height(18.dp))
                     if (!config.isConfigured) {
@@ -150,12 +150,13 @@ private fun HeaderBar(
 ) {
     val temp = states[config.tempEntity]
     val humidity = states[config.humidityEntity]
+    val animated = config.animationsEnabled
 
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             ClockBlock(Modifier.weight(1f))
             if (weather != null) {
-                WeatherNow(weather)
+                WeatherNow(weather, animated)
             }
         }
         if (temp != null || humidity != null) {
@@ -166,7 +167,16 @@ private fun HeaderBar(
 }
 
 @Composable
-private fun WeatherNow(weather: EntityState) {
+private fun WeatherGlyph(condition: String, size: androidx.compose.ui.unit.Dp, animated: Boolean) {
+    if (animated) {
+        AnimatedWeatherIcon(condition, Modifier.size(size))
+    } else {
+        Icon(weatherIcon(condition), null, tint = weatherIconTint(condition), modifier = Modifier.size(size))
+    }
+}
+
+@Composable
+private fun WeatherNow(weather: EntityState, animated: Boolean) {
     val condition = weather.state
     val temp = weather.attributes.optDouble("temperature").takeIf { !it.isNaN() }
     Row(
@@ -180,12 +190,12 @@ private fun WeatherNow(weather: EntityState) {
             Text(prettyCondition(condition), fontSize = 14.sp, color = TextSecondary)
         }
         Spacer(Modifier.width(10.dp))
-        Icon(weatherIcon(condition), null, tint = weatherIconTint(condition), modifier = Modifier.size(48.dp))
+        WeatherGlyph(condition, 54.dp, animated)
     }
 }
 
 @Composable
-private fun ForecastStrip(forecast: List<ForecastEntry>) {
+private fun ForecastStrip(forecast: List<ForecastEntry>, animated: Boolean) {
     Surface(color = PanelSurface.copy(alpha = 0.45f), shape = RoundedCornerShape(20.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 8.dp),
@@ -197,9 +207,9 @@ private fun ForecastStrip(forecast: List<ForecastEntry>) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(forecastDayLabel(f.datetime), fontSize = 13.sp, color = TextSecondary)
-                    Spacer(Modifier.height(6.dp))
-                    Icon(weatherIcon(f.condition), null, tint = weatherIconTint(f.condition), modifier = Modifier.size(30.dp))
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(4.dp))
+                    WeatherGlyph(f.condition, 38.dp, animated)
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         f.tempHigh?.let { "${it.roundToInt()}°" } ?: "–",
                         fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,

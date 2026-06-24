@@ -41,6 +41,7 @@ class Settings(context: Context) {
         weatherEntity = prefs.getString(K_WEATHER, "") ?: "",
         weatherDynamicBg = prefs.getBoolean(K_WEATHER_BG, true),
         weatherShowForecast = prefs.getBoolean(K_WEATHER_FORECAST, true),
+        animationsEnabled = prefs.getBoolean(K_ANIMATIONS, true),
     )
 
     private fun readLights(): List<LightEntry> {
@@ -83,6 +84,7 @@ class Settings(context: Context) {
             putString(K_WEATHER, c.weatherEntity.trim())
             putBoolean(K_WEATHER_BG, c.weatherDynamicBg)
             putBoolean(K_WEATHER_FORECAST, c.weatherShowForecast)
+            putBoolean(K_ANIMATIONS, c.animationsEnabled)
         }.apply()
     }
 
@@ -101,6 +103,7 @@ class Settings(context: Context) {
         private const val K_WEATHER = "weather_entity"
         private const val K_WEATHER_BG = "weather_dynamic_bg"
         private const val K_WEATHER_FORECAST = "weather_show_forecast"
+        private const val K_ANIMATIONS = "animations_enabled"
     }
 }
 
@@ -118,6 +121,7 @@ data class Config(
     val weatherEntity: String = "",
     val weatherDynamicBg: Boolean = true,
     val weatherShowForecast: Boolean = true,
+    val animationsEnabled: Boolean = true,
 ) {
     val isConfigured: Boolean get() = baseUrl.isNotBlank() && token.isNotBlank()
     val configuredLights: List<LightEntry> get() = lights.filter { it.entityId.isNotBlank() }
